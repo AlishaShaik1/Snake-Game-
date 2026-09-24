@@ -1,5 +1,29 @@
 {
-  "name": "Neon Snake & Beats",
-  "description": "A dark neon-themed music player integrated with a classic Snake game.",
-  "requestFramePermissions": []
+  "name": "serpent-the-last-cycle",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SERPENT: THE LAST CYCLE — a story-driven 3D dark-fantasy action-adventure built on the Snake mechanic.",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port=3000 --host=0.0.0.0",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "n8ao": "^2.0.1",
+    "postprocessing": "^6.39.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "three": "^0.186.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "5.8",
+    "vite": "^8.3.1"
+  }
 }
