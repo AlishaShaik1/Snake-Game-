@@ -12,5 +12,17 @@ export default defineConfig({
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 2000,
+    rolldownOptions: {
+      output: {
+        // keep the engine libraries in their own long-cacheable chunks
+        advancedChunks: {
+          groups: [
+            { name: 'three', test: /node_modules[\\/]three[\\/]/, priority: 3 },
+            { name: 'postfx', test: /node_modules[\\/](postprocessing|n8ao)[\\/]/, priority: 2 },
+            { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler|zustand)[\\/]/, priority: 1 },
+          ],
+        },
+      },
+    },
   },
 });

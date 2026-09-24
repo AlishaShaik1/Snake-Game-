@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { PropSpec } from './biomes';
 import { noise2, rng, randIn, TAU } from './util';
 import { stoneTextures } from './textures';
@@ -31,6 +31,35 @@ function addWind(mat: THREE.MeshStandardMaterial, strength: number, heightPow = 
       );
   };
   mat.customProgramCacheKey = () => 'wind' + strength + heightPow;
+}
+
+// ---------------------------------------------------------------- stylised foliage shading
+/** Canopy gets a bottom-to-top gradient (self-shadowing) and a soft back-lit rim. */
+function addFoliage(mat: THREE.MeshStandardMaterial, y0: number, y1: number) {
+  const prev = mat.onBeforeCompile;
+  const prevKey = mat.customProgramCacheKey?.bind(mat);
+  mat.onBeforeCompile = (shader, renderer) => {
+    prev?.call(mat, shader, renderer);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vFolY;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFolY = position.y;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vFolY;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        diffuseColor.rgb *= mix(0.42, 1.18, smoothstep(${y0.toFixed(1)}, ${y1.toFixed(1)}, vFolY));`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        {
+          float fr = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
+          totalEmissiveRadiance += diffuseColor.rgb * pow(fr, 3.0) * 0.35;
+        }`,
+      );
+  };
+  mat.customProgramCacheKey = () => (prevKey ? prevKey() : '') + '|fol';
 }
 
 // ---------------------------------------------------------------- camera occlusion fade
@@ -166,12 +195,29 @@ function deadTreeGeo(r: () => number) {
 function canopyGeo(r: () => number) {
   const parts: THREE.BufferGeometry[] = [];
   const blobs = 5 + Math.floor(r() * 3);
+  const center = new THREE.Vector3(0, 6.8, 0);
   for (let i = 0; i < blobs; i++) {
-    const g = displace(new THREE.IcosahedronGeometry(1.6 + r() * 1.1, 2), 0.45, 0.9, r() * 50);
+    // indexed sphere -> smooth normals after displacement (no faceting)
+    let g: THREE.BufferGeometry = new THREE.IcosahedronGeometry(1.6 + r() * 1.1, 3);
+    g.deleteAttribute('normal');
+    g.deleteAttribute('uv');
+    g = mergeVertices(g);
+    displace(g, 0.5, 1.1, r() * 50);
     g.translate((r() - 0.5) * 3, 5.5 + r() * 2.5, (r() - 0.5) * 3);
     parts.push(g);
   }
-  return merge(parts);
+  const m = merge(parts);
+  // bend normals toward the canopy's centre-out direction: the whole crown shades
+  // as one soft volume (stylised foliage lighting) instead of a pile of balls
+  const p = m.attributes.position as THREE.BufferAttribute;
+  const n = m.attributes.normal as THREE.BufferAttribute;
+  const a = new THREE.Vector3(), b = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    a.fromBufferAttribute(p, i).sub(center).normalize();
+    b.fromBufferAttribute(n, i).lerp(a, 0.65).normalize();
+    n.setXYZ(i, b.x, b.y, b.z);
+  }
+  return m;
 }
 
 function rockGeo(r: () => number) {
@@ -477,6 +523,7 @@ export function buildProps(specs: PropSpec[], ctx: PropContext) {
           const trunk = deadTreeGeo(r);
           const leafMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: false });
           addWind(leafMat, 0.012, 1.2);
+          addFoliage(leafMat, 4, 9.8);
           variants.push([
             { geo: trunk, mat: new THREE.MeshStandardMaterial({ color: '#2a1e16', roughness: 0.95 }), shadow: true },
             { geo: canopyGeo(r), mat: leafMat, shadow: true },

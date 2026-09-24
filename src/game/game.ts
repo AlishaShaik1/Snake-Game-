@@ -425,7 +425,12 @@ export class Game implements GameAPI {
     this.snapCamera();
     this.camMode = 'chase';
     // compile shaders during the card
-    this.engine.renderer.compile(this.scene, this.camera);
+    try {
+      // KHR_parallel_shader_compile lets the driver build programs off the main thread while the card animates
+      await this.engine.renderer.compileAsync(this.scene, this.camera);
+    } catch {
+      this.engine.renderer.compile(this.scene, this.camera);
+    }
     updateSave((s) => { s.lastChapter = index; s.lastSection = section; });
     const minCard = showCard ? 4200 : 300;
     const elapsed = performance.now() - cardStart;

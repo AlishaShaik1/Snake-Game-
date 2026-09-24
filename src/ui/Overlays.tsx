@@ -24,7 +24,6 @@ export function Fx() {
       <div className="fade" style={{ opacity: fade }} />
       {flash && <div key={flash.id} className="flash" style={{ background: flash.color }} />}
       {dmg > 0 && <div key={dmg} className="damage" />}
-      <div className="grain" />
     </>
   );
 }
