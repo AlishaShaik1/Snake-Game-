@@ -261,6 +261,47 @@ export class World {
       const flow = flowNoiseTexture();
       const wn = flow.normal.clone(); wn.repeat.set(30, 30); wn.needsUpdate = true;
       const wm = new THREE.MeshPhysicalMaterial({ color: def.water.color, roughness: 0.04, metalness: 0.2, transparent: true, opacity: def.water.opacity ?? 0.85, normalMap: wn, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.4, clearcoat: 1 });
+      // bake shoreline depth (0 at the shore .. 1 at >= 3 m deep) so the surface fades into the
+      // bank with a foam line instead of cutting the terrain with a hard edge
+      const DN = 256;
+      const depth = new Uint8Array(DN * DN * 4);
+      for (let j = 0; j < DN; j++)
+        for (let i = 0; i < DN; i++) {
+          const x = (i / (DN - 1) - 0.5) * W, z = (j / (DN - 1) - 0.5) * D;
+          const d = clamp((def.water.level - this.height(x, z)) / 3, 0, 1);
+          const k = (j * DN + i) * 4;
+          depth[k] = Math.round(d * 255); depth[k + 3] = 255;
+        }
+      const depthTex = new THREE.DataTexture(depth, DN, DN, THREE.RGBAFormat);
+      depthTex.magFilter = THREE.LinearFilter; depthTex.minFilter = THREE.LinearFilter;
+      depthTex.needsUpdate = true;
+      const wu = { uDepthTex: { value: depthTex }, uWorldSize: { value: new THREE.Vector2(W, D) }, uWTime: this.causticUniforms.uTime };
+      wm.onBeforeCompile = (sh) => {
+        Object.assign(sh.uniforms, wu);
+        sh.vertexShader = sh.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying vec2 vWXZ;')
+          .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nvarying vec2 vWXZ; uniform sampler2D uDepthTex; uniform vec2 uWorldSize; uniform float uWTime; float wDepth;')
+          .replace(
+            '#include <color_fragment>',
+            `#include <color_fragment>
+            wDepth = texture2D(uDepthTex, vWXZ / uWorldSize + 0.5).r;
+            diffuseColor.rgb *= mix(1.25, 0.55, smoothstep(0.0, 0.8, wDepth));
+            diffuseColor.a *= mix(0.2, 1.0, smoothstep(0.0, 0.35, wDepth)) * smoothstep(0.0, 0.03, wDepth);
+            {
+              // thin, broken foam that laps at the bank (lit, not emissive, so bloom leaves it alone)
+              float band = smoothstep(0.0, 0.015, wDepth) * (1.0 - smoothstep(0.02, 0.06, wDepth));
+              float n1 = sin(vWXZ.x * 0.9 + uWTime * 0.7) * sin(vWXZ.y * 1.1 - uWTime * 0.5);
+              float n2 = sin((vWXZ.x + vWXZ.y) * 2.3 + uWTime * 1.3);
+              float lap = 0.5 + 0.5 * sin(wDepth * 160.0 - uWTime * 1.8);
+              float foam = band * smoothstep(0.1, 0.8, n1 * 0.6 + n2 * 0.25 + lap * 0.5);
+              diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.8, 0.8), foam * 0.55);
+              diffuseColor.a = max(diffuseColor.a, foam * 0.45);
+            }`,
+          );
+      };
+      wm.customProgramCacheKey = () => 'water-shore';
       this.water = new THREE.Mesh(new THREE.PlaneGeometry(W, D).rotateX(-Math.PI / 2), wm);
       this.water.position.y = def.water.level;
       this.water.receiveShadow = true;

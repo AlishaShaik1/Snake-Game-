@@ -167,7 +167,7 @@ function nonIndexed(gs: THREE.BufferGeometry[]) {
 }
 const merge = (gs: THREE.BufferGeometry[]) => mergeGeometries(nonIndexed(gs), false)!;
 
-function deadTreeGeo(r: () => number) {
+function deadTreeGeo(r: () => number, opts: { depth?: number; len?: number } = {}) {
   const parts: THREE.BufferGeometry[] = [];
   const branch = (from: THREE.Vector3, dir: THREE.Vector3, len: number, rad: number, depth: number) => {
     const g = cyl(rad, rad * 0.62, len, depth > 1 ? 7 : 5);
@@ -183,7 +183,7 @@ function deadTreeGeo(r: () => number) {
       branch(end, nd.normalize(), len * (0.55 + r() * 0.2), rad * 0.6, depth - 1);
     }
   };
-  branch(new THREE.Vector3(0, -0.5, 0), new THREE.Vector3((r() - 0.5) * 0.3, 1, (r() - 0.5) * 0.3), 4 + r() * 2, 0.34, 3);
+  branch(new THREE.Vector3(0, -0.5, 0), new THREE.Vector3((r() - 0.5) * 0.3, 1, (r() - 0.5) * 0.3), opts.len ?? 4 + r() * 2, 0.34, opts.depth ?? 3);
   // roots
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * TAU + r();
@@ -520,7 +520,8 @@ export function buildProps(specs: PropSpec[], ctx: PropContext) {
           break;
         }
         case 'tree': {
-          const trunk = deadTreeGeo(r);
+          // shorter, shallower trunk so no bare branch pokes out of the crown
+          const trunk = deadTreeGeo(r, { depth: 2, len: 3.6 + r() * 1.2 });
           const leafMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, flatShading: false });
           addWind(leafMat, 0.012, 1.2);
           addFoliage(leafMat, 4, 9.8);
